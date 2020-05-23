@@ -1,25 +1,161 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+author: "justmzen"
+date: "5/22/2020"
+output: html_document
+keep_md: true
 ---
 
+## Introduction
+
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a [Fitbit](https://www.fitbit.com/it/home), Nike [Fuelband](https://www.nike.com/help/a/why-cant-i-sync), or [Jawbone Up](https://www.jawbone.com/up). These type of devices are part of the “quantified self” movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The data for this assignment can be downloaded from the course web site:
+
+Dataset: [Activity monitoring data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) [52K].  
+The variables included in this dataset are:
+
+**steps**: Number of steps taking in a 5-minute interval (missing values are coded as NA).  
+**date**: The date on which the measurement was taken in YYYY-MM-DD format.  
+**interval**: Identifier for the 5-minute interval in which measurement was taken.  
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
+
+# Analysing the data set
 
 ## Loading and preprocessing the data
 
+```{r, echo = TRUE}
+# Libraries loading
+library('dplyr')
+library('data.table')
+library('ggplot2')
 
+# File downloading
+if(!file.exists('./activity.csv')){
+        fileURL <- 'https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip'
+        download.file(url = fileURL, destfile = './activity.zip')
+        unzip(zipfile = './activity.zip')
+        rm(fileURL)
+}
 
-## What is mean total number of steps taken per day?
+# Loading the data set
+ac <- fread(file = './activity.csv',
+               colClasses = c('integer', 'factor', 'integer'),
+               na.strings = 'NA')
+```
 
+## What is the mean total number of steps taken per day?
 
+The total number of steps taken per day is:
+```{r, echo = TRUE}
+stepsPerDay <- ac %>% dplyr::group_by(date) %>% 
+        dplyr::summarise(steps = mean(steps, na.rm = TRUE))
+head(stepsPerDay)
+hist(stepsPerDay$steps)
+```
+
+The mean and median of the total number of steps taken per day are:
+```{r, echo = TRUE}
+meanStepsPerDay <- mean(stepsPerDay$steps, na.rm = TRUE)
+medianStepsPerDay <- median(stepsPerDay$steps, na.rm = TRUE)
+
+meanStepsPerDay
+medianStepsPerDay
+```
 
 ## What is the average daily activity pattern?
 
+The time series plot (type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis) is:
+```{r, echo = TRUE}
+meanStepsInterval <- ac %>% dplyr::group_by(interval) %>% 
+  dplyr::summarise(steps = mean(steps, na.rm = TRUE))
+head(meanStepsInterval)
 
+ggplot(meanStepsInterval, aes(x = interval , y = steps)) + geom_line() + 
+  labs(title = "Average number of steps taken per day", x = "Interval", 
+       y = "Average Daily Steps")
+```
+
+The 5-minute interval that, on average, contains the maximum number of steps is:
+```{r, echo = TRUE}
+maxStepsInterval <- meanStepsInterval[meanStepsInterval$steps == 
+                                        max(meanStepsInterval$steps), 
+                                      'interval']
+maxStepsInterval
+```
 
 ## Imputing missing values
 
+The number of rows and the percentage of NAs are:
+```{r, echo = TRUE}
+sum(is.na(ac$steps))
+mean(is.na(ac$steps))
+```
 
+A strategy for filling in all of the missing values in the dataset may be using
+the average number of steps. A new data set will be created:
+```{r, echo = TRUE}
+acFilled <- ac
+acFilled$steps[which(is.na(acFilled$steps) == TRUE)] <- 
+        mean(acFilled$steps, na.rm = TRUE)
+data.table::fwrite(x = acFilled, file = "./activity_filled.csv", quote = FALSE)
+```
+
+The histogram of the total number of steps taken each day for the filled data set is:
+```{r, echo = TRUE}
+stepsPerDayFilled <- acFilled %>% dplyr::group_by(date) %>% 
+        dplyr::summarise(steps = sum(steps, na.rm = TRUE))
+hist(stepsPerDayFilled$steps)
+```
+
+The mean and median total number of steps taken per day are:
+```{r, echo = TRUE}
+meanStepsPerDayFilled <- mean(stepsPerDayFilled$steps, na.rm = TRUE)
+medianStepsPerDayFilled <- median(stepsPerDayFilled$steps, na.rm = TRUE)
+
+meanStepsPerDayFilled
+medianStepsPerDayFilled
+```
+
+These values  differ from the estimates from the first part of the assignment. In fact, the difference between the mean values of the two data sets and the one between the medians are:
+```{r, echo = TRUE}
+meanStepsPerDayFilled - meanStepsPerDay
+medianStepsPerDayFilled - medianStepsPerDay
+```
+
+What is the impact of imputing missing data on the estimates of the total daily number of steps?
+```{r, echo = TRUE}
+ggplot(stepsPerDayFilled, aes(x = steps)) + 
+  geom_histogram() +
+  labs(title = "Total daily number of steps for the filled data set",
+       x = "Steps", y = "Frequency")
+```
+
+Data set | Mean steps | Median steps
+--- | --- | ---
+Original DS | `r meanStepsPerDay` | `r medianStepsPerDay`
+Filled DS | `r meanStepsPerDayFilled` | `r medianStepsPerDayFilled`
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r, echo = TRUE}
+acFilled <- acFilled %>% mutate(weekDay = weekdays(as.Date(date), abbr = TRUE))
+
+acFilled[grepl('Mon|Tue|Wed|Thu|Fri', acFilled$weekDay), 'weekPart'] <-
+  'weekday'
+acFilled[grepl('Sat|Sun', acFilled$weekDay), 'weekPart'] <-
+  'weekend'
+acFilled$weekPart <- as.factor(acFilled$weekPart)
+head(acFilled, 10)
+
+meanStepsPerDayFilledWeekPart <- acFilled %>% 
+  dplyr::group_by(interval, weekPart) %>%
+  dplyr::summarise(steps = mean(steps))
+
+ggplot(data = meanStepsPerDayFilledWeekPart, aes(x = interval, y = steps)) +
+  geom_line() + facet_grid(weekPart ~ .) +
+  labs(title = 'Average number of steps taken per 5-minute interval') +
+  ylab('Average number of steps') + xlab('5-minute interval')
+```
